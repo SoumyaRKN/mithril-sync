@@ -1,6 +1,6 @@
 {
   "name": "mithril-sync",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A powerful utility to flatten, diff, rebuild, and sync deeply nested JavaScript data structures — inspired by magic, forged in code.",
   "main": "MithrilSync.js",
   "scripts": {

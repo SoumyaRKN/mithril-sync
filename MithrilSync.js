@@ -1,17 +1,55 @@
+/**
+ * MithrilSync provides tools for deep object flattening, tracking, diffing,
+ * mutation, and live synchronization with support for Maps, Sets, Arrays, and Objects.
+ */
 class MithrilSync {
+    /**
+     * @param {Object} object - The object to initialize and track.
+     * @example
+     * const sync = new MithrilSync({ user: { name: 'Alice' } });
+     */
     constructor(object = {}) {
         this.original = structuredClone(object);
-        this.entries = ObjectSyncTool.flatten(object);
+        this.entries = MithrilSync.flatten(object);
         this._watcher = null;
     };
 
+    /**
+     * Flattens a nested object structure into a list of entries.
+     * Supports Map, Set, Array, and plain objects.
+     *
+     * @param {Object} obj - The object to flatten.
+     * @param {Array} prefix - The current path (used internally).
+     * @returns {Array} List of flattened entries.
+     * @example
+     * MithrilSync.flatten({ a: { b: 1 } });
+     * // => [{ path: ['a', 'b'], dotPath: 'a.b', value: 1, kind: 'number' }]
+     */
     static flatten(obj = {}, prefix = []) {
         const results = [];
-        const stack = [{ current: obj, path: prefix }];
+        const stack = [{ current: obj, path: prefix, kind: Array.isArray(obj) ? 'array' : typeof obj }];
 
         while (stack.length) {
-            const { current, path } = stack.pop();
+            const { current, path, kind } = stack.pop();
 
+            // Include the current node itself (as a container entry), but skip root (empty path)
+            if (path.length) {
+                results.push({
+                    path: [...path],
+                    dotPath: path.join('.'),
+                    key: path[path.length - 1],
+                    value: current,
+                    kind: Array.isArray(current)
+                        ? 'array'
+                        : current instanceof Map
+                            ? 'map'
+                            : current instanceof Set
+                                ? 'set'
+                                : typeof current
+                });
+            }
+
+            // Recurse into child structures
             if (current instanceof Map) {
                 for (const [key, value] of current.entries()) {
                     stack.push({ current: value, path: [...path, key], kind: 'map' });
@@ -22,21 +60,28 @@ class MithrilSync {
                     stack.push({ current: value, path: [...path, index++], kind: 'set' });
                 }
             } else if (Array.isArray(current)) {
-                current.forEach((value, i) => {
-                    stack.push({ current: value, path: [...path, i], kind: 'array' });
+                current.forEach((value, index) => {
+                    stack.push({ current: value, path: [...path, index], kind: 'array' });
                 });
             } else if (typeof current === 'object' && current !== null) {
                 for (const [key, value] of Object.entries(current)) {
                     stack.push({ current: value, path: [...path, key], kind: 'object' });
                 }
-            } else {
-                results.push({ path, dotPath: path.join('.'), value: current, kind: typeof current });
             }
         }
 
         return results;
-    };
+    }
 
+    /**
+     * Reconstructs an object from flattened entries.
+     *
+     * @param {Array} entries - The flattened entries to rebuild.
+     * @returns {Object} The nested object.
+     * @example
+     * MithrilSync.rebuild([{ path: ['a', 'b'], value: 1 }]);
+     * // => { a: { b: 1 } }
+     */
     static rebuild(entries = []) {
         const result = {};
         for (const { path, value } of entries) {
@@ -54,13 +99,23 @@ class MithrilSync {
         return result;
     };
 
+    /**
+     * Deeply merges two objects recursively.
+     *
+     * @param {Object} target
+     * @param {Object} source
+     * @returns {Object} The merged object.
+     * @example
+     * MithrilSync.merge({ a: 1 }, { b: 2 });
+     * // => { a: 1, b: 2 }
+     */
     static merge(target = {}, source = {}) {
         for (const [key, value] of Object.entries(source)) {
             if (
                 typeof value === 'object' && value !== null &&
                 typeof target[key] === 'object' && target[key] !== null
             ) {
-                target[key] = ObjectSyncTool.merge(target[key], value);
+                target[key] = MithrilSync.merge(target[key], value);
             } else {
                 target[key] = value;
             }
@@ -68,6 +123,18 @@ class MithrilSync {
         return target;
     };
 
+    /**
+     * Compares two sets of entries and returns a list of changes.
+     *
+     * @param {Array} oldEntries
+     * @param {Array} newEntries
+     * @param {Object} options
+     * @param {boolean} [options.deepCompare=false]
+     * @param {boolean} [options.strictTypes=false]
+     * @returns {Array} List of changes (added, removed, modified).
+     * @example
+     * MithrilSync.watch(oldFlat, newFlat);
+     */
     static watch(oldEntries = [], newEntries = [], options = {}) {
         const { deepCompare = false, strictTypes = false } = options;
         const changes = [];
@@ -104,10 +171,31 @@ class MithrilSync {
         return changes;
     };
 
+    /**
+     * Gets a value from an object using dotPath.
+     *
+     * @param {Object} obj
+     * @param {string} dotPath
+     * @returns {*} Value at the path or undefined.
+     * @example
+     * MithrilSync.get({ a: { b: 1 } }, 'a.b');
+     * // => 1
+     */
     static get(obj, dotPath) {
         return dotPath.split('.').reduce((o, k) => o?.[k], obj);
     };
 
+    /**
+     * Sets a value in an object using dotPath.
+     *
+     * @param {Object} obj
+     * @param {string} dotPath
+     * @param {*} value
+     * @example
+     * const obj = {};
+     * MithrilSync.set(obj, 'a.b', 42);
+     * // obj => { a: { b: 42 } }
+     */
     static set(obj, dotPath, value) {
         const keys = dotPath.split('.');
         let ref = obj;
@@ -118,6 +206,13 @@ class MithrilSync {
         ref[keys.at(-1)] = value;
     };
 
+    /**
+     * Applies a list of changes to a target object.
+     *
+     * @param {Object} target
+     * @param {Array} changes
+     * @returns {Object} Modified target
+     */
     static applyChanges(target = {}, changes = []) {
         for (const change of changes) {
             const keys = change.path.split('.');
@@ -136,26 +231,61 @@ class MithrilSync {
         return target;
     };
 
+    /**
+     * Builds a new object from a base and a diff.
+     *
+     * @param {Object} base
+     * @param {Array} diff
+     * @returns {Object} New object with applied diff
+     */
     static fromDiff(base = {}, diff = []) {
         return this.applyChanges(structuredClone(base), diff);
     };
 
+    /**
+     * Manually updates the internal entry list.
+     *
+     * @param {Array} entries - New flattened entries.
+     */
     syncEntries(entries = []) {
         this.entries = [...entries];
     };
 
+    /**
+     * Returns the original object used in the constructor.
+     *
+     * @returns {Object}
+     */
     getOriginal() {
         return structuredClone(this.original);
     };
 
+    /**
+     * Returns the current flattened entries.
+     *
+     * @returns {Array}
+     */
     getFlat() {
         return structuredClone(this.entries);
     };
 
+    /**
+     * Rebuilds the full object from flattened entries.
+     *
+     * @returns {Object}
+     */
     rebuild() {
-        return ObjectSyncTool.rebuild(this.entries);
+        return MithrilSync.rebuild(this.entries);
     };
 
+    /**
+     * Updates or adds a single entry by dotPath.
+     *
+     * @param {string} dotPath
+     * @param {*} newValue
+     * @example
+     * sync.updateEntry('user.name', 'Bob');
+     */
     updateEntry(dotPath, newValue) {
         const index = this.entries.findIndex((e) => e.dotPath === dotPath);
         if (index !== -1) {
@@ -166,20 +296,45 @@ class MithrilSync {
         }
     };
 
+    /**
+     * Removes a flattened entry by dotPath.
+     *
+     * @param {string} dotPath
+     */
     removeEntry(dotPath) {
         this.entries = this.entries.filter((e) => e.dotPath !== dotPath);
     };
 
+    /**
+     * Compares the current rebuilt object with the original.
+     *
+     * @param {Object} options
+     * @returns {Array} List of detected changes.
+     */
     getChanges(options = {}) {
-        const currentFlat = ObjectSyncTool.flatten(this.rebuild());
-        return ObjectSyncTool.watch(ObjectSyncTool.flatten(this.original), currentFlat, options);
+        const currentFlat = MithrilSync.flatten(this.rebuild());
+        return MithrilSync.watch(MithrilSync.flatten(this.original), currentFlat, options);
     };
 
+    /**
+     * Merges the current original object with another one.
+     *
+     * @param {Object} source
+     * @example
+     * sync.mergeWith({ user: { email: 'a@b.com' } });
+     */
     mergeWith(source = {}) {
-        const merged = ObjectSyncTool.merge(this.getOriginal(), source);
-        this.entries = ObjectSyncTool.flatten(merged);
+        const merged = MithrilSync.merge(this.getOriginal(), source);
+        this.entries = MithrilSync.flatten(merged);
     };
 
+    /**
+     * Reverts changes using a diff (like undo).
+     *
+     * @param {Array} diff
+     * @example
+     * sync.revertChanges(diff);
+     */
     revertChanges(diff = []) {
         const reversed = diff.map(change => {
             if (change.type === 'added') {
@@ -195,17 +350,26 @@ class MithrilSync {
                 };
             }
         });
-        const reverted = ObjectSyncTool.applyChanges(this.rebuild(), reversed);
-        this.entries = ObjectSyncTool.flatten(reverted);
+        const reverted = MithrilSync.applyChanges(this.rebuild(), reversed);
+        this.entries = MithrilSync.flatten(reverted);
     };
 
+    /**
+     * Starts watching for live changes and invokes a callback when they occur.
+     *
+     * @param {Function} callback
+     * @param {number} interval - Polling interval in ms.
+     * @param {Object} options - Options passed to watch()
+     * @example
+     * sync.watchLive((changes) => console.log(changes), 1000);
+     */
     watchLive(callback, interval = 500, options = {}) {
         clearInterval(this._watcher);
-        let previousFlat = ObjectSyncTool.flatten(this.rebuild());
+        let previousFlat = MithrilSync.flatten(this.rebuild());
 
         this._watcher = setInterval(() => {
-            const currentFlat = ObjectSyncTool.flatten(this.rebuild());
-            const changes = ObjectSyncTool.watch(previousFlat, currentFlat, options);
+            const currentFlat = MithrilSync.flatten(this.rebuild());
+            const changes = MithrilSync.watch(previousFlat, currentFlat, options);
             if (changes.length) {
                 previousFlat = currentFlat;
                 callback(changes);
@@ -213,16 +377,48 @@ class MithrilSync {
         }, interval);
     };
 
+    /**
+     * Stops the live change watcher.
+     */
     stopWatch() {
         clearInterval(this._watcher);
         this._watcher = null;
     };
 
+    /**
+     * Rebuilds the object from only selected entries.
+     *
+     * @param {Function} filterFn - A function to filter entries.
+     * @returns {Object}
+     * @example
+     * sync.toTree(entry => entry.dotPath.startsWith('user'));
+     */
     toTree(filterFn = () => true) {
         const filtered = this.entries.filter(filterFn);
-        return ObjectSyncTool.rebuild(filtered);
+        return MithrilSync.rebuild(filtered);
     };
 
+    /**
+     * Searches through flattened entries with advanced filtering options.
+     *
+     * @param {Object} options
+     * @param {string|number} options.target
+     * @param {Array} [options.fallbacks]
+     * @param {boolean} [options.matchKeys=true]
+     * @param {boolean} [options.matchValues=true]
+     * @param {boolean} [options.caseInsensitive=false]
+     * @param {boolean} [options.useRegex=false]
+     * @param {boolean} [options.findAll=false]
+     * @param {Function|null} [options.mutate=null]
+     * @param {Array} [options.onlyTypes=[]]
+     * @param {'full'|'dotPaths'|'entriesOnly'} [options.returnFormat='full']
+     * @param {boolean} [options.includeNull=true]
+     * @param {boolean} [options.includeUndefined=true]
+     * @param {boolean} [options.includeEmptyString=true]
+     * @returns {Object} { matched: boolean, results: array }
+     * @example
+     * sync.find({ target: 'name', matchKeys: true });
+     */
     find({
         target = '',
         fallbacks = [],
@@ -303,8 +499,7 @@ class MithrilSync {
                                 key,
                                 value: val,
                                 path: entry.path,
-                                dotPath: entry.dotPath,
-                                context: null
+                                dotPath: entry.dotPath
                             });
                     }
 
