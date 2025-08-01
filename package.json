@@ -1,0 +1,35 @@
+{
+  "name": "mithril-sync",
+  "version": "1.0.0",
+  "description": "A powerful utility to flatten, diff, rebuild, and sync deeply nested JavaScript data structures — inspired by magic, forged in code.",
+  "main": "MithrilSync.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mithril",
+    "object",
+    "sync",
+    "find",
+    "key",
+    "search",
+    "diff",
+    "flatten",
+    "rebuild",
+    "deep",
+    "watch",
+    "map",
+    "set",
+    "toolkit"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SoumyaRKN/mithril-sync.git"
+  },
+  "author": "Soumya Prakash Nayak",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/SoumyaRKN/mithril-sync/issues"
+  },
+  "homepage": "https://github.com/SoumyaRKN/mithril-sync#readme"
+}
